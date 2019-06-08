@@ -506,7 +506,7 @@ this way the, we can leak memory allocated after the propertynamesbuffer.
 if we would call the function with very large objects, then the propertynamearray would end up inlined in the function.<br>
 by allocating objects within objects we can align known symbols and pointers after this buffer's end.<br>
 
-![]({{site.baseurl}}/images/s/leakedptr.png)
+![](https://raw.githubusercontent.com/akayn/Issue-198327/master/m/leakedptr.png)
 
 this leaked pointer (and others) would always take the form of:
 
